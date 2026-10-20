@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Water Cooler Conformity</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #eee; max-width: 700px; margin: 40px auto; padding: 20px; }
+  #cooler { background: #2a2a2a; border-radius: 12px; padding: 24px; margin-bottom: 20px; min-height: 120px; }
+  #prompt { font-size: 1.1em; line-height: 1.5; margin-bottom: 16px; }
+  .responses { display: flex; flex-wrap: wrap; gap: 10px; }
+  button { background: #444; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
+  button:hover { background: #555; }
+  #score { margin-top: 20px; font-size: 0.9em; color: #aaa; }
+  #status { font-size: 0.8em; color: #888; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>Water Cooler</h1>
+<div id="cooler">
+  <div id="prompt">Loading voices…</div>
+  <div class="responses" id="responses"></div>
+</div>
+<div id="score">Conformity: 50</div>
+<div id="status"></div>
+
+<script type="module">
+// Kokoro TTS via CDN (kokoro-js)
+import { KokoroTTS } from "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm";
+
+let tts = null;
+let conformity = 50;
+let currentLine = null;
+
+const lines = [
+  // Support-test
+  { text: "You can criticize the border stuff if you want, but if you’re not supporting our immigrant communities right now you’re basically giving cover to the people who want them gone.", type: "support", speaker: "af_bella" },
+  { text: "I get that people have questions about the election, but when you keep bringing it up you’re not supporting the people who are actually trying to protect democracy.", type: "support", speaker: "af_heart" },
+  // Identity-test
+  { text: "If you’re still defending any of that January 6 stuff, I don’t know what to tell you—you’re not really with the rest of us on what America is supposed to be.", type: "identity", speaker: "am_adam" },
+  { text: "Real Americans don’t need to be told twice that Putin’s guy isn’t our guy. If you’re still doing the ‘but both sides’ thing, that’s a choice.", type: "identity", speaker: "af_nicole" },
+  // Bland mix
+  { text: "Did you see the game last night? That interception was brutal.", type: "bland", speaker: "am_adam" },
+  { text: "Heard the new Marvel movie is mid. Anyone going?", type: "bland", speaker: "af_bella" },
+];
+
+async function initTTS() {
+  document.getElementById("status").textContent = "Loading Kokoro voices (first time downloads ~80MB)…";
+  try {
+    tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
+      dtype: "q8",
+      device: "webgpu",
+    });
+    document.getElementById("status").textContent = "Voices ready.";
+    nextPrompt();
+  } catch (e) {
+    document.getElementById("status").textContent = "WebGPU unavailable, falling back to WASM…";
+    tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
+      dtype: "q8",
+      device: "wasm",
+    });
+    document.getElementById("status").textContent = "Voices ready (WASM).";
+    nextPrompt();
+  }
+}
+
+async function speak(text, voice) {
+  if (!tts) return;
+  const audio = await tts.generate(text, { voice });
+  const blob = audio.toBlob();
+  const url = URL.createObjectURL(blob);
+  const a = new Audio(url);
+  a.play();
+}
+
+function nextPrompt() {
+  currentLine = lines[Math.floor(Math.random() * lines.length)];
+  document.getElementById("prompt").textContent = currentLine.text;
+  speak(currentLine.text, currentLine.speaker);
+
+  const container = document.getElementById("responses");
+  container.innerHTML = "";
+  const opts = [
+    { label: "Smile", delta: currentLine.type === "bland" ? 2 : 5 },
+    { label: "Frown", delta: currentLine.type === "bland" ? -1 : -4 },
+    { label: "Agree", delta: currentLine.type === "bland" ? 1 : 6 },
+    { label: "Disagree", delta: currentLine.type === "bland" ? -2 : -7 },
+    { label: "“Yeah, interesting.”", delta: 1 },
+  ];
+  opts.forEach(o => {
+    const b = document.createElement("button");
+    b.textContent = o.label;
+    b.onclick = () => respond(o.delta);
+    container.appendChild(b);
+  });
+}
+
+function respond(delta) {
+  conformity = Math.max(0, Math.min(100, conformity + delta));
+  document.getElementById("score").textContent = "Conformity: " + conformity;
+  setTimeout(nextPrompt, 800);
+}
+
+initTTS();
+</script>
+</body>
+</html>
